@@ -203,6 +203,36 @@ def bar_chart(chart_id, labels, values, height=280, ylabel="$/bbl",
     return "\n".join(out), "{}"
 
 
+def simple_table(headers, rows, split_after=None):
+    """항상 보이는 표. 각 칸은 이미 포맷된 문자열.
+
+    split_after: 이 인덱스의 열 뒤에 실적/추정 경계선을 긋는다.
+    음수 값은 자동으로 빨갛게 표시한다.
+    """
+    def th(i, x):
+        c = " class='sep'" if split_after is not None and i == split_after + 1 else ""
+        return "<th%s>%s</th>" % (c, _esc(x))
+
+    head = "".join(th(i, x) for i, x in enumerate(headers))
+
+    body = []
+    for r in rows:
+        cells = []
+        for j, c in enumerate(r):
+            cls = []
+            s = str(c)
+            if j > 0 and s.lstrip().startswith("-") and any(ch.isdigit() for ch in s):
+                cls.append("neg")
+            if split_after is not None and j == split_after + 1:
+                cls.append("sep")
+            attr = (' class="%s"' % " ".join(cls)) if cls else ""
+            cells.append("<td%s>%s</td>" % (attr, _esc(c)))
+        body.append("<tr>" + "".join(cells) + "</tr>")
+
+    return ('<div class="scroll"><table class="fin"><thead><tr>%s</tr></thead>'
+            "<tbody>%s</tbody></table></div>" % (head, "".join(body)))
+
+
 def table_view(headers, rows, caption=""):
     """차트의 접근성 대체 표 (relief rule 대응)."""
     h = "".join("<th>%s</th>" % _esc(x) for x in headers)

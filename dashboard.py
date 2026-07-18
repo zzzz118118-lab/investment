@@ -55,6 +55,120 @@ def tile(label, value, prev=None, unit="", d=1, note=""):
                ('<span class="note">%s</span>' % note) if note else ""))
 
 
+def _n(v, d=0):
+    """억원/원 단위 정수 포맷. None은 '-'."""
+    if v is None or pd.isna(v):
+        return "-"
+    return "{:,.{}f}".format(v, d)
+
+
+def build_financials():
+    """주가 + 재무 표. 수집 실패 시 ('', '') 을 돌려주고 카드를 생략한다."""
+    try:
+        import financials
+        d = financials.fetch_all()
+    except Exception as e:
+        print("  [경고] 재무 수집 실패: %s" % e)
+        return "", ""
+
+    px, ann, qtr, est = d["price"], d["annual"], d["quarterly"], d["estimates"]
+    price = px.get("price")
+
+    def e(src, period, col):
+        if est.empty:
+            return None
+        m = est[(est.source == src) & (est.period == period)]
+        if m.empty or pd.isna(m.iloc[0][col]):
+            return None
+        return float(m.iloc[0][col])
+
+    def a(period, key):
+        return ann.at[period, key] if period in ann.index and key in ann.columns else None
+
+    # ── 연간: 2023~2025 실적 + 2026F/2027F 컨센서스 ────────────
+    # 네이버는 억원, 리포트 CSV는 십억원이므로 10배로 맞춘다.
+    yrs = ["2023.12", "2024.12", "2025.12"]
+    hdr = ["항목", "2023", "2024", "2025", "2026F", "2027F"]
+
+    c26_rev, c26_op, c26_np = a("2026.12(E)", "revenue"), a("2026.12(E)", "op"), a("2026.12(E)", "np")
+    c27_rev = (e("컨센서스", "2027F", "revenue") or 0) * 10 or None
+    c27_op = (e("컨센서스", "2027F", "op") or 0) * 10 or None
+    c27_np = (e("컨센서스", "2027F", "np") or 0) * 10 or None
+
+    def margin(num, den):
+        return (num / den * 100) if (num is not None and den) else None
+
+    def yld(dps):
+        return (dps / price * 100) if (dps and price) else None
+
+    d26_dps = a("2026.12(E)", "dps")
+    d27_dps = e("신영", "2027F", "dps")   # 컨센서스 DPS가 없어 신영 추정치를 쓴다
+
+    rows = [
+        ["매출액"] + [_n(a(y, "revenue")) for y in yrs] + [_n(c26_rev), _n(c27_rev)],
+        ["영업이익"] + [_n(a(y, "op")) for y in yrs] + [_n(c26_op), _n(c27_op)],
+        ["영업이익률 (%)"] + [_n(a(y, "op_margin"), 2) for y in yrs]
+        + [_n(margin(c26_op, c26_rev), 2), _n(margin(c27_op, c27_rev), 2)],
+        ["당기순이익"] + [_n(a(y, "np")) for y in yrs] + [_n(c26_np), _n(c27_np)],
+        ["순이익률 (%)"] + [_n(a(y, "np_margin"), 2) for y in yrs]
+        + [_n(margin(c26_np, c26_rev), 2), _n(margin(c27_np, c27_rev), 2)],
+        ["EPS (원)"] + [_n(a(y, "eps")) for y in yrs]
+        + [_n(a("2026.12(E)", "eps")), _n(e("컨센서스", "2027F", "eps"))],
+        ["주당배당금 (원)"] + [_n(a(y, "dps")) for y in yrs] + [_n(d26_dps), _n(d27_dps)],
+        ["배당수익률 (%)"] + [_n(a(y, "div_yield"), 2) for y in yrs]
+        + [_n(yld(d26_dps), 2), _n(yld(d27_dps), 2)],
+    ]
+    t_year = charts.simple_table(hdr, rows, split_after=3)
+
+    # ── 2026 분기 ───────────────────────────────────────────
+    q_hdr = ["항목", "1Q26", "2Q26F", "3Q26F", "4Q26F"]
+
+    def q(period, key):
+        return qtr.at[period, key] if period in qtr.index and key in qtr.columns else None
+
+    q1r, q1o, q1n = q("2026.03", "revenue"), q("2026.03", "op"), q("2026.03", "np")
+    q2r, q2o, q2n = q("2026.06(E)", "revenue"), q("2026.06(E)", "op"), q("2026.06(E)", "np")
+    q3r = (e("신영", "3Q26F", "revenue") or 0) * 10 or None
+    q3o = (e("신영", "3Q26F", "op") or 0) * 10 or None
+    q3n = (e("신영", "3Q26F", "np") or 0) * 10 or None
+    q4r = (e("신영", "4Q26F", "revenue") or 0) * 10 or None
+    q4o = (e("신영", "4Q26F", "op") or 0) * 10 or None
+    q4n = (e("신영", "4Q26F", "np") or 0) * 10 or None
+
+    q_rows = [
+        ["매출액", _n(q1r), _n(q2r), _n(q3r), _n(q4r)],
+        ["영업이익", _n(q1o), _n(q2o), _n(q3o), _n(q4o)],
+        ["영업이익률 (%)", _n(margin(q1o, q1r), 2), _n(margin(q2o, q2r), 2),
+         _n(margin(q3o, q3r), 2), _n(margin(q4o, q4r), 2)],
+        ["당기순이익", _n(q1n), _n(q2n), _n(q3n), _n(q4n)],
+        ["순이익률 (%)", _n(margin(q1n, q1r), 2), _n(margin(q2n, q2r), 2),
+         _n(margin(q3n, q3r), 2), _n(margin(q4n, q4r), 2)],
+    ]
+    t_qtr = charts.simple_table(q_hdr, q_rows, split_after=1)
+
+    # ── 컨센서스 vs 증권사 ───────────────────────────────────
+    cmp_rows = []
+    for period, cons in (("2026F", c26_op), ("2027F", c27_op)):
+        sy = (e("신영", period, "op") or 0) * 10 or None
+        ha = (e("하나", period, "op") or 0) * 10 or None
+        cmp_rows.append([period + " 영업이익", _n(cons), _n(sy), _n(ha)])
+    t_cmp = charts.simple_table(["구분", "컨센서스", "신영증권", "하나증권"], cmp_rows)
+
+    chg = px.get("change")
+    chg_pct = px.get("change_pct")
+    cls = "up" if (chg or 0) > 0 else ("down" if (chg or 0) < 0 else "flat")
+    arrow = "▲" if (chg or 0) > 0 else ("▼" if (chg or 0) < 0 else "")
+    head = ('<div class="pxrow"><div><div class="tl">현재가</div>'
+            '<div class="pxv">%s<span class="tu">원</span></div>'
+            '<div class="tm"><span class="dl %s">%s %s (%s%%)</span></div></div>'
+            '<div class="pxmeta">시가총액 %s억원<br>2026F PER %s배 · PBR %s배</div></div>'
+            % (_n(price), cls, arrow, _n(abs(chg) if chg else None),
+               _n(chg_pct, 2), _n(px.get("mktcap")),
+               _n(a("2026.12(E)", "per"), 2), _n(a("2026.12(E)", "pbr"), 2)))
+
+    return head, (t_year, t_qtr, t_cmp)
+
+
 def build():
     df = store.load(config.PRICES_CSV)
     if df.empty:
@@ -163,7 +277,15 @@ def build():
         tile("원/달러", fxv, None, "", 0, "스냅샷"),
     ])
 
+    px_head, fin_tables = build_financials()
+    if fin_tables:
+        t_year, t_qtr, t_cmp = fin_tables
+        fin_card = FIN_CARD.format(px=px_head, t_year=t_year, t_qtr=t_qtr, t_cmp=t_cmp)
+    else:
+        fin_card = ""
+
     html = TEMPLATE.format(
+        fin_card=fin_card,
         asof=asof, generated=datetime.now().strftime("%Y-%m-%d %H:%M"),
         hero=num(cm, 2), hero_delta=delta_html(cm, cm_p, 2),
         hist_avg=num(hist_avg, 1),
@@ -177,6 +299,29 @@ def build():
     OUT.write_text(html, encoding="utf-8")
     return OUT
 
+
+FIN_CARD = """
+<div class="card">
+  <h2>주가 · 실적</h2>
+  {px}
+  <h3>연간</h3>
+  <p class="cap">단위: 억원. 2026F·2027F는 컨센서스이며, 회색 세로선 왼쪽이 확정 실적이다.</p>
+  {t_year}
+  <h3>2026년 분기</h3>
+  <p class="cap">1Q26은 확정 실적, 2Q26F는 컨센서스, 3Q·4Q26F는 신영증권 추정치다.</p>
+  {t_qtr}
+  <h3>2026~27 영업이익 — 컨센서스 대비</h3>
+  <p class="cap">두 증권사 모두 컨센서스보다 공격적이다. 특히 2027년 차이가 크다.</p>
+  {t_cmp}
+  <p class="cap" style="margin-top:14px">
+    실적·컨센서스는 네이버 금융(FnGuide), 증권사 추정치는 신영증권 2026-07-15 /
+    하나증권 2026-07-07 리포트.
+    2027F 주당배당금만 컨센서스가 없어 신영증권 추정치(6,000원)를 썼고,
+    추정 연도의 배당수익률은 현재가 기준으로 계산했다.
+    네이버가 3개년만 제공해 <b>2021~2022년은 빠져 있다</b>.
+  </p>
+</div>
+"""
 
 TEMPLATE = """<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -269,6 +414,17 @@ h2 {{ font-size:15px; margin:0 0 3px; }}
   color:var(--ink2); }}
 .legend i {{ width:11px; height:11px; border-radius:3px; display:inline-block;
   margin-right:5px; vertical-align:-1px; }}
+h3 {{ font-size:13.5px; margin:22px 0 3px; color:var(--ink); }}
+.pxrow {{ display:flex; justify-content:space-between; align-items:flex-end;
+  flex-wrap:wrap; gap:12px; padding-bottom:6px; }}
+.pxv {{ font-size:34px; font-weight:600; line-height:1.1; letter-spacing:-0.02em; }}
+.pxmeta {{ font-size:12.5px; color:var(--muted); text-align:right; line-height:1.6; }}
+table.fin {{ min-width:520px; }}
+table.fin td:first-child, table.fin th:first-child {{ text-align:left;
+  color:var(--ink2); white-space:nowrap; }}
+table.fin tbody tr:hover {{ background:var(--plane); }}
+table.fin .neg {{ color:var(--down); }}
+table.fin .sep {{ border-left:2px solid var(--base); }}
 .tbl {{ margin-top:12px; }}
 .tbl summary {{ cursor:pointer; color:var(--ink2); font-size:12.5px; padding:5px 0; }}
 .scroll {{ overflow-x:auto; margin-top:8px; }}
@@ -294,6 +450,7 @@ footer {{ color:var(--muted); font-size:12px; margin-top:26px; line-height:1.7; 
 </header>
 
 {banner}
+{fin_card}
 <div class="card">
   <div class="hero">
     <div>
