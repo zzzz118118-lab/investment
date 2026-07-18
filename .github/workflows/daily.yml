@@ -32,7 +32,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: 수집 + 대시보드 생성
+      - name: 수집 + 대시보드 생성 + 카카오 발송
+        env:
+          # 시크릿이 없으면 카카오 단계는 조용히 건너뛴다.
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          SITE_URL: https://zzzz118118-lab.github.io/investment/
         run: python run_daily.py
 
       - name: 데이터 커밋
