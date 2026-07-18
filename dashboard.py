@@ -85,10 +85,24 @@ def build_financials():
     def a(period, key):
         return ann.at[period, key] if period in ann.index and key in ann.columns else None
 
-    # ── 연간: 2023~2025 실적 + 2026F/2027F 컨센서스 ────────────
+    # ── 연간: 2021~2025 실적 + 2026F/2027F 컨센서스 ────────────
     # 네이버는 억원, 리포트 CSV는 십억원이므로 10배로 맞춘다.
+    # 2021~2022는 네이버가 주지 않아 DART에서 1회 받아둔 CSV를 쓴다.
+    hist = {}
+    hp = config.DATA / "financials_history.csv"
+    if hp.exists():
+        hdf = pd.read_csv(hp, comment="#").set_index("year")
+        hist = {int(y): r for y, r in hdf.iterrows()}
+
+    def hv(year, key):
+        r = hist.get(year)
+        if r is None or key not in r or pd.isna(r[key]):
+            return None
+        return float(r[key])
+
+    hyrs = sorted(hist)                      # [2021, 2022]
     yrs = ["2023.12", "2024.12", "2025.12"]
-    hdr = ["항목", "2023", "2024", "2025", "2026F", "2027F"]
+    hdr = ["항목"] + [str(y) for y in hyrs] + ["2023", "2024", "2025", "2026F", "2027F"]
 
     c26_rev, c26_op, c26_np = a("2026.12(E)", "revenue"), a("2026.12(E)", "op"), a("2026.12(E)", "np")
     c27_rev = (e("컨센서스", "2027F", "revenue") or 0) * 10 or None
@@ -105,20 +119,28 @@ def build_financials():
     d27_dps = e("신영", "2027F", "dps")   # 컨센서스 DPS가 없어 신영 추정치를 쓴다
 
     rows = [
-        ["매출액"] + [_n(a(y, "revenue")) for y in yrs] + [_n(c26_rev), _n(c27_rev)],
-        ["영업이익"] + [_n(a(y, "op")) for y in yrs] + [_n(c26_op), _n(c27_op)],
-        ["영업이익률 (%)"] + [_n(a(y, "op_margin"), 2) for y in yrs]
+        ["매출액"] + [_n(hv(y, "revenue")) for y in hyrs]
+        + [_n(a(y, "revenue")) for y in yrs] + [_n(c26_rev), _n(c27_rev)],
+        ["영업이익"] + [_n(hv(y, "op")) for y in hyrs]
+        + [_n(a(y, "op")) for y in yrs] + [_n(c26_op), _n(c27_op)],
+        ["영업이익률 (%)"] + [_n(margin(hv(y, "op"), hv(y, "revenue")), 2) for y in hyrs]
+        + [_n(a(y, "op_margin"), 2) for y in yrs]
         + [_n(margin(c26_op, c26_rev), 2), _n(margin(c27_op, c27_rev), 2)],
-        ["당기순이익"] + [_n(a(y, "np")) for y in yrs] + [_n(c26_np), _n(c27_np)],
-        ["순이익률 (%)"] + [_n(a(y, "np_margin"), 2) for y in yrs]
+        ["당기순이익"] + [_n(hv(y, "np")) for y in hyrs]
+        + [_n(a(y, "np")) for y in yrs] + [_n(c26_np), _n(c27_np)],
+        ["순이익률 (%)"] + [_n(margin(hv(y, "np"), hv(y, "revenue")), 2) for y in hyrs]
+        + [_n(a(y, "np_margin"), 2) for y in yrs]
         + [_n(margin(c26_np, c26_rev), 2), _n(margin(c27_np, c27_rev), 2)],
-        ["EPS (원)"] + [_n(a(y, "eps")) for y in yrs]
+        ["EPS (원)"] + [_n(hv(y, "eps")) for y in hyrs]
+        + [_n(a(y, "eps")) for y in yrs]
         + [_n(a("2026.12(E)", "eps")), _n(e("컨센서스", "2027F", "eps"))],
-        ["주당배당금 (원)"] + [_n(a(y, "dps")) for y in yrs] + [_n(d26_dps), _n(d27_dps)],
-        ["배당수익률 (%)"] + [_n(a(y, "div_yield"), 2) for y in yrs]
+        ["주당배당금 (원)"] + [_n(hv(y, "dps")) for y in hyrs]
+        + [_n(a(y, "dps")) for y in yrs] + [_n(d26_dps), _n(d27_dps)],
+        ["배당수익률 (%)"] + [_n(hv(y, "div_yield"), 2) for y in hyrs]
+        + [_n(a(y, "div_yield"), 2) for y in yrs]
         + [_n(yld(d26_dps), 2), _n(yld(d27_dps), 2)],
     ]
-    t_year = charts.simple_table(hdr, rows, split_after=3)
+    t_year = charts.simple_table(hdr, rows, split_after=len(hyrs) + 3)
 
     # ── 2026 분기 ───────────────────────────────────────────
     q_hdr = ["항목", "1Q26", "2Q26F", "3Q26F", "4Q26F"]
@@ -316,9 +338,10 @@ FIN_CARD = """
   <p class="cap" style="margin-top:14px">
     실적·컨센서스는 네이버 금융(FnGuide), 증권사 추정치는 신영증권 2026-07-15 /
     하나증권 2026-07-07 리포트.
+    2021~2022년은 네이버가 제공하지 않아 DART 사업보고서(연결)에서 1회 받아
+    고정해 두었다 — 확정 실적이라 갱신이 필요 없다.
     2027F 주당배당금만 컨센서스가 없어 신영증권 추정치(6,000원)를 썼고,
     추정 연도의 배당수익률은 현재가 기준으로 계산했다.
-    네이버가 3개년만 제공해 <b>2021~2022년은 빠져 있다</b>.
   </p>
 </div>
 """
