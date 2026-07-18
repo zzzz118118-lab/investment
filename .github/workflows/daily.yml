@@ -5,6 +5,17 @@ on:
     # 22:00 UTC = 07:00 KST (다음날). GitHub cron은 부하에 따라 수분 지연될 수 있다.
     - cron: "0 22 * * *"
   workflow_dispatch:        # 수동 실행 버튼
+  push:
+    branches: [main]
+    # 코드나 기준 데이터가 바뀌면 바로 사이트에 반영한다.
+    # 이게 없으면 푸시해도 다음 정기 실행까지 예전 화면이 그대로 뜬다.
+    #
+    # 이 잡은 data/prices.csv 를 되커밋하지만 무한 루프는 생기지 않는다.
+    # GITHUB_TOKEN으로 만든 커밋은 새 워크플로 실행을 트리거하지 않는다.
+    paths:
+      - "**.py"
+      - "data/*.csv"
+      - ".github/workflows/daily.yml"
 
 permissions:
   contents: write           # prices.csv 커밋
