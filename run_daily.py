@@ -111,11 +111,15 @@ def main():
         return 1
 
     cm = df["complex_margin"].dropna()
+    fin_ok = dashboard.LAST_INFO.get("financials", False)
+    if not fin_ok:
+        print("\n[경고] 주가·실적 카드가 생성되지 않았습니다 (재무 수집 실패).")
     write_status(config.SITE / "status.json",
                  ok=collected, asof=str(latest), stale_days=stale,
                  rows=len(df), new_rows=len(df) - n_before,
+                 financials=fin_ok,
                  complex_margin=round(float(cm.iloc[-1]), 2) if len(cm) else None)
-    print("상태 기록: site/status.json (ok=%s)" % collected)
+    print("상태 기록: site/status.json (ok=%s, financials=%s)" % (collected, fin_ok))
 
     # ── 카카오톡 ─────────────────────────────────────────────
     try:

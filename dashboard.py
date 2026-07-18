@@ -17,6 +17,10 @@ import store
 
 OUT = config.SITE / "index.html"
 
+# build() 실행 결과 메모. 카드가 조용히 빠지는 상황을 밖에서 감지하려고 둔다.
+# (CI에 lxml이 없어 재무 표가 통째로 사라졌는데 화면만 봐서는 몰랐던 적이 있다)
+LAST_INFO = {}
+
 # 두 리포트가 제시한 기준선 (README 참조)
 BENCH = [
     ("20년 평균", None),          # 실데이터에서 계산
@@ -206,6 +210,7 @@ def build():
         fin_card = FIN_CARD.format(px=px_head, t_year=t_year, t_qtr=t_qtr, t_cmp=t_cmp)
     else:
         fin_card = ""
+    LAST_INFO["financials"] = bool(fin_tables)
 
     html = TEMPLATE.format(
         fin_card=fin_card,
