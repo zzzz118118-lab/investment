@@ -100,6 +100,18 @@ def fetch_performance(html=None):
     return pd.DataFrame(ann).T, pd.DataFrame(qtr).T
 
 
+def parse_period(s):
+    """'2025.12' -> (2025, 12, False), '2026.12(E)' -> (2026, 12, True).
+
+    네이버는 최근 3개년/6분기만 보여주고 시간이 가면 이 창이 밀린다.
+    따라서 컬럼명을 하드코딩하지 말고 항상 여기서 해석해 쓴다.
+    """
+    m = re.match(r"(\d{4})\.(\d{1,2})\s*(\(E\))?", str(s).strip())
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2)), bool(m.group(3))
+
+
 def load_estimates():
     """리포트 추정치 CSV."""
     p = config.DATA / "report_estimates.csv"

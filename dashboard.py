@@ -66,129 +66,11 @@ def build_financials():
     """주가 + 재무 표. 수집 실패 시 ('', '') 을 돌려주고 카드를 생략한다."""
     try:
         import financials
-        d = financials.fetch_all()
+        import fin_tables
+        return fin_tables.build(financials.fetch_all())
     except Exception as e:
         print("  [경고] 재무 수집 실패: %s" % e)
         return "", ""
-
-    px, ann, qtr, est = d["price"], d["annual"], d["quarterly"], d["estimates"]
-    price = px.get("price")
-
-    def e(src, period, col):
-        if est.empty:
-            return None
-        m = est[(est.source == src) & (est.period == period)]
-        if m.empty or pd.isna(m.iloc[0][col]):
-            return None
-        return float(m.iloc[0][col])
-
-    def a(period, key):
-        return ann.at[period, key] if period in ann.index and key in ann.columns else None
-
-    # ── 연간: 2021~2025 실적 + 2026F/2027F 컨센서스 ────────────
-    # 네이버는 억원, 리포트 CSV는 십억원이므로 10배로 맞춘다.
-    # 2021~2022는 네이버가 주지 않아 DART에서 1회 받아둔 CSV를 쓴다.
-    hist = {}
-    hp = config.DATA / "financials_history.csv"
-    if hp.exists():
-        hdf = pd.read_csv(hp, comment="#").set_index("year")
-        hist = {int(y): r for y, r in hdf.iterrows()}
-
-    def hv(year, key):
-        r = hist.get(year)
-        if r is None or key not in r or pd.isna(r[key]):
-            return None
-        return float(r[key])
-
-    hyrs = sorted(hist)                      # [2021, 2022]
-    yrs = ["2023.12", "2024.12", "2025.12"]
-    hdr = ["항목"] + [str(y) for y in hyrs] + ["2023", "2024", "2025", "2026F", "2027F"]
-
-    c26_rev, c26_op, c26_np = a("2026.12(E)", "revenue"), a("2026.12(E)", "op"), a("2026.12(E)", "np")
-    c27_rev = (e("컨센서스", "2027F", "revenue") or 0) * 10 or None
-    c27_op = (e("컨센서스", "2027F", "op") or 0) * 10 or None
-    c27_np = (e("컨센서스", "2027F", "np") or 0) * 10 or None
-
-    def margin(num, den):
-        return (num / den * 100) if (num is not None and den) else None
-
-    def yld(dps):
-        return (dps / price * 100) if (dps and price) else None
-
-    d26_dps = a("2026.12(E)", "dps")
-    d27_dps = e("신영", "2027F", "dps")   # 컨센서스 DPS가 없어 신영 추정치를 쓴다
-
-    rows = [
-        ["매출액"] + [_n(hv(y, "revenue")) for y in hyrs]
-        + [_n(a(y, "revenue")) for y in yrs] + [_n(c26_rev), _n(c27_rev)],
-        ["영업이익"] + [_n(hv(y, "op")) for y in hyrs]
-        + [_n(a(y, "op")) for y in yrs] + [_n(c26_op), _n(c27_op)],
-        ["영업이익률 (%)"] + [_n(margin(hv(y, "op"), hv(y, "revenue")), 2) for y in hyrs]
-        + [_n(a(y, "op_margin"), 2) for y in yrs]
-        + [_n(margin(c26_op, c26_rev), 2), _n(margin(c27_op, c27_rev), 2)],
-        ["당기순이익"] + [_n(hv(y, "np")) for y in hyrs]
-        + [_n(a(y, "np")) for y in yrs] + [_n(c26_np), _n(c27_np)],
-        ["순이익률 (%)"] + [_n(margin(hv(y, "np"), hv(y, "revenue")), 2) for y in hyrs]
-        + [_n(a(y, "np_margin"), 2) for y in yrs]
-        + [_n(margin(c26_np, c26_rev), 2), _n(margin(c27_np, c27_rev), 2)],
-        ["EPS (원)"] + [_n(hv(y, "eps")) for y in hyrs]
-        + [_n(a(y, "eps")) for y in yrs]
-        + [_n(a("2026.12(E)", "eps")), _n(e("컨센서스", "2027F", "eps"))],
-        ["주당배당금 (원)"] + [_n(hv(y, "dps")) for y in hyrs]
-        + [_n(a(y, "dps")) for y in yrs] + [_n(d26_dps), _n(d27_dps)],
-        ["배당수익률 (%)"] + [_n(hv(y, "div_yield"), 2) for y in hyrs]
-        + [_n(a(y, "div_yield"), 2) for y in yrs]
-        + [_n(yld(d26_dps), 2), _n(yld(d27_dps), 2)],
-    ]
-    t_year = charts.simple_table(hdr, rows, split_after=len(hyrs) + 3)
-
-    # ── 2026 분기 ───────────────────────────────────────────
-    q_hdr = ["항목", "1Q26", "2Q26F", "3Q26F", "4Q26F"]
-
-    def q(period, key):
-        return qtr.at[period, key] if period in qtr.index and key in qtr.columns else None
-
-    q1r, q1o, q1n = q("2026.03", "revenue"), q("2026.03", "op"), q("2026.03", "np")
-    q2r, q2o, q2n = q("2026.06(E)", "revenue"), q("2026.06(E)", "op"), q("2026.06(E)", "np")
-    q3r = (e("신영", "3Q26F", "revenue") or 0) * 10 or None
-    q3o = (e("신영", "3Q26F", "op") or 0) * 10 or None
-    q3n = (e("신영", "3Q26F", "np") or 0) * 10 or None
-    q4r = (e("신영", "4Q26F", "revenue") or 0) * 10 or None
-    q4o = (e("신영", "4Q26F", "op") or 0) * 10 or None
-    q4n = (e("신영", "4Q26F", "np") or 0) * 10 or None
-
-    q_rows = [
-        ["매출액", _n(q1r), _n(q2r), _n(q3r), _n(q4r)],
-        ["영업이익", _n(q1o), _n(q2o), _n(q3o), _n(q4o)],
-        ["영업이익률 (%)", _n(margin(q1o, q1r), 2), _n(margin(q2o, q2r), 2),
-         _n(margin(q3o, q3r), 2), _n(margin(q4o, q4r), 2)],
-        ["당기순이익", _n(q1n), _n(q2n), _n(q3n), _n(q4n)],
-        ["순이익률 (%)", _n(margin(q1n, q1r), 2), _n(margin(q2n, q2r), 2),
-         _n(margin(q3n, q3r), 2), _n(margin(q4n, q4r), 2)],
-    ]
-    t_qtr = charts.simple_table(q_hdr, q_rows, split_after=1)
-
-    # ── 컨센서스 vs 증권사 ───────────────────────────────────
-    cmp_rows = []
-    for period, cons in (("2026F", c26_op), ("2027F", c27_op)):
-        sy = (e("신영", period, "op") or 0) * 10 or None
-        ha = (e("하나", period, "op") or 0) * 10 or None
-        cmp_rows.append([period + " 영업이익", _n(cons), _n(sy), _n(ha)])
-    t_cmp = charts.simple_table(["구분", "컨센서스", "신영증권", "하나증권"], cmp_rows)
-
-    chg = px.get("change")
-    chg_pct = px.get("change_pct")
-    cls = "up" if (chg or 0) > 0 else ("down" if (chg or 0) < 0 else "flat")
-    arrow = "▲" if (chg or 0) > 0 else ("▼" if (chg or 0) < 0 else "")
-    head = ('<div class="pxrow"><div><div class="tl">현재가</div>'
-            '<div class="pxv">%s<span class="tu">원</span></div>'
-            '<div class="tm"><span class="dl %s">%s %s (%s%%)</span></div></div>'
-            '<div class="pxmeta">시가총액 %s억원<br>2026F PER %s배 · PBR %s배</div></div>'
-            % (_n(price), cls, arrow, _n(abs(chg) if chg else None),
-               _n(chg_pct, 2), _n(px.get("mktcap")),
-               _n(a("2026.12(E)", "per"), 2), _n(a("2026.12(E)", "pbr"), 2)))
-
-    return head, (t_year, t_qtr, t_cmp)
 
 
 def build():
@@ -208,8 +90,27 @@ def build():
     ke, ke_p = two("crack_kerosene")
     di, di_p = two("crack_diesel005")
     ga, ga_p = two("crack_gasoline95")
-    osp = df["osp_arab_light"].dropna().iloc[-1] if "osp_arab_light" in df.columns \
-        and df["osp_arab_light"].notna().any() else None
+    # OSP는 월 1회 발표이고 자동 수집원이 없어 data/osp.csv 수동 입력에 의존한다.
+    # 값 자체보다 '언제 기준인가'가 중요하므로 기준월을 반드시 함께 보여주고,
+    # 입력이 밀리면 경과 개월수를 드러낸다.
+    osp, osp_note = None, ""
+    ospf = config.DATA / "osp.csv"
+    if ospf.exists():
+        o = pd.read_csv(ospf, comment="#")
+        o = o[o.arab_light.notna()].sort_values("month")
+        if not o.empty:
+            last = o.iloc[-1]
+            osp = float(last.arab_light)
+            # 변수명 주의: mo/yr 은 이 함수에서 월간·연간 집계 DataFrame이다
+            osp_y, osp_m = (int(x) for x in str(last.month).split("-")[:2])
+            today = datetime.today().date()
+            gap = (today.year - osp_y) * 12 + (today.month - osp_m)
+            osp_note = "%d년 %d월" % (osp_y, osp_m)
+            if gap > 0:
+                osp_note += " · %d개월 경과" % gap
+            if len(o) >= 2:
+                prev = float(o.iloc[-2].arab_light)
+                osp_note += " (MoM %+.1f)" % (osp - prev)
 
     fxdf = store.load(config.FX_CSV)
     fxv = fxdf["usdkrw"].dropna().iloc[-1] if not fxdf.empty and "usdkrw" in fxdf else None
@@ -295,7 +196,7 @@ def build():
         tile("경유 크랙", di, di_p, " $/bbl"),
         tile("가솔린 크랙", ga, ga_p, " $/bbl"),
         tile("단순정제마진", sm, sm_p, " $/bbl"),
-        tile("OSP Arab Light", osp, None, " $/bbl", 1, "월간"),
+        tile("OSP Arab Light", osp, None, " $/bbl", 1, osp_note),
         tile("원/달러", fxv, None, "", 0, "스냅샷"),
     ])
 
