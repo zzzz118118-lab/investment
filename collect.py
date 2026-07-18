@@ -62,15 +62,15 @@ def collect(seed=False):
     except Exception as e:
         print("  [경고] 환율 수집 실패: %s" % e)
 
-    # 윤활유 수출단가 (월간, 2~3개월 시차). 매일 받아도 부담이 없어 그냥 갱신한다.
+    # 윤활기유 수출단가 (관세청, 월간). 과거는 확정값이라 최근 2년만 갱신한다.
     try:
-        import lube
-        ldf = lube.update()
-        if ldf is not None and not ldf.empty:
-            print("  윤활유 수출단가: %d개월 (최신 %s)"
-                  % (len(ldf), ldf.index.max().date()))
+        import customs
+        bdf = customs.update(start_year=datetime.today().year - 1)
+        if bdf is not None and not bdf.empty:
+            print("  윤활기유 수출단가: %d개월 (최신 %s)"
+                  % (len(bdf), bdf.index.max().date()))
     except Exception as e:
-        print("  [경고] 윤활유 수집 실패: %s" % e)
+        print("  [경고] 윤활기유 수집 실패: %s" % e)
 
     return df
 

@@ -175,36 +175,41 @@ def build():
         [[d.strftime("%Y-%m-%d")] + [num(r[c]) for _, c in pairs]
          for d, r in d120.tail(30).iterrows()], "크랙 최근 30일")
 
-    # ── 윤활유 수출단가 (월간) ───────────────────────────────────
+    # ── 윤활기유 수출단가 (월간, HS 2710195020) ──────────────────
     lube_card = ""
-    ldf = store.load(config.DATA / "lube.csv")
-    if not ldf.empty and "lube_price" in ldf.columns:
-        l24 = ldf.tail(36)
+    bdf = store.load(config.DATA / "baseoil.csv")
+    if not bdf.empty and "baseoil_usd_ton" in bdf.columns:
+        col = "baseoil_usd_ton"
+        b36 = bdf.tail(36)
         cl, cld = charts.line_chart(
-            "cl", [d.strftime("%y-%m") for d in l24.index],
-            [("수출단가", [None if pd.isna(v) else round(v, 2)
-                          for v in l24["lube_price"]])],
-            height=280, direct_labels=True)
+            "cl", [d.strftime("%y-%m") for d in b36.index],
+            [("수출단가", [None if pd.isna(v) else round(v, 1) for v in b36[col]])],
+            height=280, ylabel="$/ton", direct_labels=True)
         datas["cl"] = cld
         tl = charts.table_view(
-            ["월", "단가($/bbl)", "물량(천bbl)", "금액(천$)"],
-            [[d.strftime("%Y-%m"), num(r.lube_price, 2),
-              num(r.lube_volume, 0), num(r.lube_value, 0)]
-             for d, r in ldf[::-1].head(24).iterrows()], "최근 24개월")
-        last = ldf["lube_price"].dropna()
+            ["월", "단가($/ton)", "수출중량(톤)", "수출금액($)"],
+            [[d.strftime("%Y-%m"), num(r[col], 1),
+              num(r.baseoil_weight / 1000, 0), num(r.baseoil_value, 0)]
+             for d, r in bdf[::-1].head(24).iterrows()], "최근 24개월")
+
+        last = bdf[col].dropna()
         gap_m = 0
         if len(last):
             lm = last.index[-1]
             gap_m = (datetime.today().year - lm.year) * 12 + \
                     (datetime.today().month - lm.month)
+        prev = last.iloc[-2] if len(last) >= 2 else None
+        # 직전 12개월(최신월 제외) 평균을 비교 기준선으로 쓴다
+        basis = last.iloc[-13:-1].mean() if len(last) >= 13 else last.mean()
         lube_card = LUBE_CARD.format(
             chart=cl, table=tl,
-            latest=num(last.iloc[-1], 1) if len(last) else "-",
-            # %-m 은 Windows에서 지원되지 않는다
+            latest=num(last.iloc[-1], 0) if len(last) else "-",
             month=("%d년 %d월" % (last.index[-1].year, last.index[-1].month))
             if len(last) else "-",
-            lag=("%d개월 시차" % gap_m) if gap_m else "",
-            base=num(ldf["lube_price"].tail(15).head(12).mean(), 1))
+            mom=("MoM %+.1f%%" % ((last.iloc[-1] / prev - 1) * 100)) if prev else "",
+            lag=("%d개월 시차" % gap_m) if gap_m else "당월 반영",
+            base=num(basis, 0),
+            ratio=num(last.iloc[-1] / basis, 2) if basis else "-")
 
     # ── 차트 3: 연평균 20년 ─────────────────────────────────────
     yl = [str(d.year) for d in yr.index]
@@ -261,17 +266,17 @@ def build():
 
 LUBE_CARD = """
 <div class="card">
-  <h2>윤활유 수출단가 — 월간</h2>
+  <h2>윤활기유 수출단가 — 월간</h2>
   <p class="cap">
-    기유 현물가는 유료 구독이 아니면 구할 수 없어, 페트로넷 제품수출 통계의
-    금액÷물량으로 <b>실현 수출단가</b>를 산출했다. 호가가 아니라 실제로 팔린
-    가격이라 분기 실적과의 연결은 오히려 더 직접적이다.
-    다만 '윤활유'는 기유보다 넓은 분류라 정확히 같은 지표는 아니다.
+    관세청 무역통계의 <b>HS 2710195020 '윤활유 기유(基油)'</b> 수출금액을
+    수출중량으로 나눈 <b>실현 단가</b>다. 현물 호가가 아니라 실제로 팔린
+    가격이라 분기 실적과의 연결이 직접적이다.
+    관세청은 매월 15일경 전월 자료를 반영하므로 시차가 짧다.
   </p>
   <div class="pxrow"><div>
     <div class="tl">{month} 수출단가</div>
-    <div class="pxv">{latest}<span class="tu">$/bbl</span></div>
-    <div class="tm"><span class="note">2025년 평균 약 {base} · {lag}</span></div>
+    <div class="pxv">{latest}<span class="tu">$/ton</span></div>
+    <div class="tm"><span class="note">{mom} · 직전 12개월 평균 {base} 대비 {ratio}배 · {lag}</span></div>
   </div></div>
   {chart}
   {table}
