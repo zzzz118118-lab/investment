@@ -37,6 +37,7 @@ jobs:
           # 시크릿이 없으면 카카오 단계는 조용히 건너뛴다.
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
           SITE_URL: https://zzzz118118-lab.github.io/investment/
         run: python run_daily.py
 

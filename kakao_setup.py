@@ -40,6 +40,12 @@ def main():
         print("입력이 없습니다. 중단합니다.")
         return 1
 
+    print("\n클라이언트 시크릿을 쓰나요?")
+    print("  카카오는 새로 발급한 REST API 키에 이걸 기본으로 켜둡니다.")
+    print("  콘솔의 [플랫폼 키] > 해당 키 > [클라이언트 시크릿]에서 확인할 수 있습니다.")
+    print("  꺼져 있다면 그냥 엔터를 누르세요.")
+    secret = input("클라이언트 시크릿 (없으면 엔터): ").strip()
+
     url = ("%s?client_id=%s&redirect_uri=%s&response_type=code&scope=talk_message"
            % (AUTH, key, REDIRECT))
     print("\n아래 주소를 브라우저에서 열고 '동의하고 계속하기'를 누르세요.")
@@ -59,14 +65,21 @@ def main():
         print("입력이 없습니다. 중단합니다.")
         return 1
 
-    r = requests.post(TOKEN, timeout=20, data={
+    data = {
         "grant_type": "authorization_code",
         "client_id": key,
         "redirect_uri": REDIRECT,
         "code": code,
-    })
+    }
+    if secret:
+        data["client_secret"] = secret
+
+    r = requests.post(TOKEN, timeout=20, data=data)
     if r.status_code != 200:
         print("\n실패 %d: %s" % (r.status_code, r.text[:400]))
+        if "KOE010" in r.text:
+            print("\nKOE010은 클라이언트 시크릿 문제입니다.")
+            print("콘솔에서 시크릿을 복사해 다시 실행하거나, 시크릿을 끄고 다시 하세요.")
         print("\ncode는 1회용입니다. 다시 받으려면 처음부터 실행하세요.")
         return 1
 
@@ -84,6 +97,9 @@ def main():
     print("  값  : %s\n" % key)
     print("  이름: KAKAO_REFRESH_TOKEN")
     print("  값  : %s\n" % refresh)
+    if secret:
+        print("  이름: KAKAO_CLIENT_SECRET")
+        print("  값  : %s\n" % secret)
     print("=" * 60)
     print("주의: 위 값은 비밀번호와 같습니다. 채팅이나 공개 저장소에 붙여넣지 마세요.")
     print("리프레시 토큰 유효기간은 약 2개월입니다. 만료가 가까워지면")
@@ -93,6 +109,7 @@ def main():
         import os
         os.environ["KAKAO_REST_API_KEY"] = key
         os.environ["KAKAO_REFRESH_TOKEN"] = refresh
+        os.environ["KAKAO_CLIENT_SECRET"] = secret
         import kakao
         try:
             kakao.notify("S-Oil 트래커 연결 테스트입니다.",

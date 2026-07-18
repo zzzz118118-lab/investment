@@ -2,9 +2,13 @@
 """카카오톡 '나에게 보내기' 발송.
 
 환경변수
-  KAKAO_REST_API_KEY   카카오 개발자 앱의 REST API 키
-  KAKAO_REFRESH_TOKEN  최초 1회 수동 인증으로 받은 리프레시 토큰
-  SITE_URL             대시보드 주소 (메시지 버튼에 붙는다)
+  KAKAO_REST_API_KEY    카카오 개발자 앱의 REST API 키
+  KAKAO_REFRESH_TOKEN   최초 1회 수동 인증으로 받은 리프레시 토큰
+  KAKAO_CLIENT_SECRET   클라이언트 시크릿 (해당 키에 활성화된 경우에만)
+  SITE_URL              대시보드 주소 (메시지 버튼에 붙는다)
+
+카카오는 요즘 REST API 키를 새로 발급하면 클라이언트 시크릿을 기본 활성화한다.
+이 경우 시크릿 없이 토큰을 요청하면 401 KOE010(Bad client credentials)이 난다.
 
 설정되지 않았으면 조용히 건너뛴다. 카카오를 안 쓰는 환경에서도
 파이프라인이 실패하지 않도록 하기 위함이다.
@@ -31,18 +35,22 @@ class NotConfigured(Exception):
 def _env():
     key = os.environ.get("KAKAO_REST_API_KEY", "").strip()
     ref = os.environ.get("KAKAO_REFRESH_TOKEN", "").strip()
+    sec = os.environ.get("KAKAO_CLIENT_SECRET", "").strip()
     if not key or not ref:
         raise NotConfigured("KAKAO_REST_API_KEY / KAKAO_REFRESH_TOKEN 미설정")
-    return key, ref
+    return key, ref, sec
 
 
-def refresh_access_token(rest_key, refresh_token):
+def refresh_access_token(rest_key, refresh_token, client_secret=""):
     """(access_token, 새 refresh_token 또는 None) 반환."""
-    r = requests.post(TOKEN_URL, timeout=20, data={
+    data = {
         "grant_type": "refresh_token",
         "client_id": rest_key,
         "refresh_token": refresh_token,
-    })
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
+    r = requests.post(TOKEN_URL, timeout=20, data=data)
     if r.status_code != 200:
         raise RuntimeError("토큰 갱신 실패 %d: %s" % (r.status_code, r.text[:300]))
     j = r.json()
@@ -66,8 +74,8 @@ def send_text(access_token, text, url=None, button="대시보드 열기"):
 
 def notify(text, url=None):
     """설정돼 있으면 발송한다. 미설정이면 NotConfigured를 던진다."""
-    key, ref = _env()
-    token, new_ref = refresh_access_token(key, ref)
+    key, ref, sec = _env()
+    token, new_ref = refresh_access_token(key, ref, sec)
     if new_ref and new_ref != ref:
         print("\n" + "!" * 60)
         print("카카오가 새 리프레시 토큰을 발급했습니다.")
