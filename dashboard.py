@@ -181,10 +181,45 @@ def build():
     if not bdf.empty and "baseoil_usd_ton" in bdf.columns:
         col = "baseoil_usd_ton"
         b36 = bdf.tail(36)
+        months = [d for d in b36.index]
+
+        # 잠정치: 확정치가 아직 없는 달만 점선으로 잇는다.
+        # 확정치가 나오면 그쪽이 이기므로 이 줄은 자동으로 사라진다.
+        prov = {}
+        pf = config.DATA / "baseoil_provisional.csv"
+        if pf.exists():
+            pdf = pd.read_csv(pf, comment="#")
+            for _, r in pdf.iterrows():
+                try:
+                    ts = pd.Timestamp(str(r["month"]) + "-01")
+                except Exception:
+                    continue
+                if ts not in bdf.index and pd.notna(r.get("usd_ton")):
+                    prov[ts] = float(r["usd_ton"])
+
+        if prov:
+            months = months + sorted(t for t in prov if t not in months)
+        conf_vals = [None if t not in b36.index or pd.isna(b36.at[t, col])
+                     else round(float(b36.at[t, col]), 1) for t in months]
+        # 마지막 확정점에서 이어지도록 그 점도 잠정 계열에 넣는다
+        last_conf = max([i for i, v in enumerate(conf_vals) if v is not None], default=None)
+        prov_vals = [None] * len(months)
+        for i, t in enumerate(months):
+            if t in prov:
+                prov_vals[i] = round(prov[t], 1)
+        if prov and last_conf is not None:
+            prov_vals[last_conf] = conf_vals[last_conf]
+
+        series = [("확정", conf_vals)]
+        dashed = ()
+        if prov:
+            series.append(("잠정", prov_vals))
+            dashed = (1,)
         cl, cld = charts.line_chart(
-            "cl", [d.strftime("%y-%m") for d in b36.index],
-            [("수출단가", [None if pd.isna(v) else round(v, 1) for v in b36[col]])],
-            height=280, ylabel="$/ton", direct_labels=True)
+            "cl", [d.strftime("%y-%m") for d in months], series,
+            height=280, ylabel="$/ton", direct_labels=True,
+            # 같은 지표의 확정/잠정이므로 색은 같게 두고 점선으로만 구분한다
+            dashed=dashed, colors=[0, 0])
         datas["cl"] = cld
         tl = charts.table_view(
             ["월", "단가($/ton)", "수출중량(톤)", "수출금액($)"],
@@ -209,7 +244,13 @@ def build():
             mom=("MoM %+.1f%%" % ((last.iloc[-1] / prev - 1) * 100)) if prev else "",
             lag=("%d개월 시차" % gap_m) if gap_m else "당월 반영",
             base=num(basis, 0),
-            ratio=num(last.iloc[-1] / basis, 2) if basis else "-")
+            ratio=num(last.iloc[-1] / basis, 2) if basis else "-",
+            prov=("".join(
+                '<div class="provline">%d년 %d월 <b>잠정 %s</b> $/ton '
+                '<span class="note">— %s</span></div>'
+                % (t.year, t.month, num(v, 0),
+                   str(pdf[pdf.month == t.strftime("%Y-%m")].iloc[0].get("note", ""))[:70])
+                for t, v in sorted(prov.items())) if prov else ""))
 
     # ── 차트 3: 연평균 20년 ─────────────────────────────────────
     yl = [str(d.year) for d in yr.index]
@@ -278,6 +319,7 @@ LUBE_CARD = """
     <div class="pxv">{latest}<span class="tu">$/ton</span></div>
     <div class="tm"><span class="note">{mom} · 직전 12개월 평균 {base} 대비 {ratio}배 · {lag}</span></div>
   </div></div>
+  {prov}
   {chart}
   {table}
 </div>
@@ -402,6 +444,10 @@ h3 {{ font-size:13.5px; margin:22px 0 3px; color:var(--ink); }}
 .pxrow {{ display:flex; justify-content:space-between; align-items:flex-end;
   flex-wrap:wrap; gap:12px; padding-bottom:6px; }}
 .pxv {{ font-size:34px; font-weight:600; line-height:1.1; letter-spacing:-0.02em; }}
+.provline {{ font-size:13px; color:var(--ink2); margin:10px 0 4px;
+  padding:8px 12px; background:var(--plane); border-radius:8px;
+  border-left:3px dashed var(--base); }}
+.provline b {{ color:var(--ink); }}
 .pxmeta {{ font-size:12.5px; color:var(--muted); text-align:right; line-height:1.6; }}
 table.fin {{ min-width:520px; }}
 table.fin td:first-child, table.fin th:first-child {{ text-align:left;

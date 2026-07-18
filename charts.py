@@ -71,8 +71,11 @@ def _spread(items, min_gap, lo, hi):
 
 
 def line_chart(chart_id, labels, series, height=300, ylabel="$/bbl",
-               direct_labels=True, width=980):
+               direct_labels=True, width=980, dashed=(), colors=None):
     """series: [(이름, [값...]), ...]  값에 None 허용.
+
+    dashed: 점선으로 그릴 계열 인덱스 집합 (확정치 vs 잠정치 구분용).
+    colors: 슬롯 인덱스를 직접 지정하고 싶을 때. 없으면 순서대로 쓴다.
 
     반환: (svg_html, data_json) — data_json은 크로스헤어 JS가 쓴 데이터.
     """
@@ -118,7 +121,8 @@ def line_chart(chart_id, labels, series, height=300, ylabel="$/bbl",
     # 라인
     ends = []   # 직접 라벨 후보: (y, x, name, value, color)
     for si, (name, ys) in enumerate(series):
-        c_l, c_d = SERIES[si % len(SERIES)]
+        slot = colors[si] if colors else si
+        c_l, c_d = SERIES[slot % len(SERIES)]
         d, pen = [], False
         for i, v in enumerate(ys):
             if v is None:
@@ -126,9 +130,10 @@ def line_chart(chart_id, labels, series, height=300, ylabel="$/bbl",
                 continue
             d.append(("M" if not pen else "L") + "%.1f %.1f" % (X(i), Y(v)))
             pen = True
+        dash = ' stroke-dasharray="5 4"' if si in dashed else ""
         out.append('<path d="%s" fill="none" class="ln" style="--c:%s;--cd:%s" '
-                   'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
-                   % (" ".join(d), c_l, c_d))
+                   'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"%s/>'
+                   % (" ".join(d), c_l, c_d, dash))
         if direct_labels:
             last = next((i for i in range(n - 1, -1, -1) if ys[i] is not None), None)
             if last is not None:
@@ -152,8 +157,8 @@ def line_chart(chart_id, labels, series, height=300, ylabel="$/bbl",
 
     meta = {"pad_l": pad_l, "iw": iw, "w": width, "labels": labels,
             "series": [{"name": nm, "vals": ys,
-                        "c": SERIES[i % len(SERIES)][0],
-                        "cd": SERIES[i % len(SERIES)][1]}
+                        "c": SERIES[(colors[i] if colors else i) % len(SERIES)][0],
+                        "cd": SERIES[(colors[i] if colors else i) % len(SERIES)][1]}
                        for i, (nm, ys) in enumerate(series)]}
     return "\n".join(out), json.dumps(meta, ensure_ascii=False)
 
