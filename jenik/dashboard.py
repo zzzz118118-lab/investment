@@ -58,6 +58,33 @@ def qlabel(y, q):
     return "%dQ%02d" % (q, y % 100)
 
 
+def build_freshness():
+    """소스별 갱신 상태. 수동 소스가 밀리면 여기서 드러난다."""
+    import freshness
+    rows = freshness.write_status()
+
+    trs = []
+    for r in rows:
+        age = "-" if r["age"] is None else "%d일 전" % r["age"]
+        state = "갱신 필요" if r["stale"] else ("정상" if r["age"] is not None else "없음")
+        trs.append([r["name"], "자동" if r["auto"] else "수동",
+                    r["last"] or "-", age, state, r["note"]])
+    tbl = charts.simple_table(
+        ["소스", "방식", "최신", "경과", "상태", "갱신 방법"], trs)
+
+    stale = [r["name"] for r in rows if r["stale"]]
+    warn = ""
+    if stale:
+        warn = ('<div class="warn" style="margin:12px 0 0">'
+                '<b>%s</b> 갱신이 필요합니다. 이 소스는 자동 수집이 안 되므로 '
+                '직접 넣어야 합니다.</div>' % ", ".join(stale))
+
+    return ('<div class="card"><h2>데이터 갱신 상태</h2>'
+            '<p class="cap">자동 소스는 매일 07:00 KST에 GitHub Actions가 갱신한다. '
+            '수동 소스는 아마존 ToS·유료 API 제약으로 자동화하지 않았다 — '
+            'README 참조.</p>%s%s</div>' % (tbl, warn))
+
+
 def build_cotrend(datas, df):
     """검색량 · 수출 · 매출 동행 카드.
 
@@ -73,7 +100,9 @@ def build_cotrend(datas, df):
     g = df["mask_usd"].groupby([df.index.year, df.index.quarter])
     eq = g.sum()[g.count() == 3] / 1e6
 
-    rev = config.QUARTERLY_REVENUE
+    # 쌓인 네이버 실적을 우선 쓴다. 새 분기가 발표되면 자동으로 늘어난다.
+    import financials
+    rev = financials.quarterly_revenue()
     base = config.INDEX_BASE
     if base not in sq.index or base not in eq.index or base not in rev:
         return ""
@@ -408,6 +437,7 @@ def build():
     # datas에 차트를 추가하므로 chartdata를 만들기 전에 불러야 한다
     amazon_card = build_amazon(datas)
     cotrend_card = build_cotrend(datas, df)
+    fresh_card = build_freshness()
 
     html = TEMPLATE.format(
         asof=asof.strftime("%Y년 %m월"),
@@ -418,6 +448,7 @@ def build():
         partial=("<b>%s</b>는 아직 진행 중이라 완결 분기에서 제외했습니다. "
                  % ", ".join(qlabel(*k) for k in partial)) if partial else "",
         amazon_card=amazon_card, cotrend_card=cotrend_card,
+        fresh_card=fresh_card,
         c1=c1, c2=c2, t2=t2, c3=c3, c3b=c3b, t3=t3, c4=c4,
         t_cmp=t_cmp, t_seg=t_seg, t_prod=t_prod, t_capa=t_capa,
         nrows=len(df), span="%s~%s" % (df.index.min().strftime("%Y-%m"),
@@ -635,6 +666,8 @@ footer b {{ color:var(--ink2); }}
     증설에도 가동률은 여전히 100%를 넘을 것으로 파악. 호기당 월 100~120만장.
   </p>
 </div>
+
+{fresh_card}
 
 <footer>
 데이터: 관세청 품목별 수출입실적 API (월별 {nrows}행, {span}) · 주가·컨센서스 네이버 금융<br>

@@ -16,7 +16,7 @@ except (AttributeError, ValueError):
 
 
 def main():
-    print("[1/3] 관세청 마스크팩 수출")
+    print("[1/4] 관세청 마스크팩 수출")
     try:
         import exports
         df = exports.update()
@@ -27,7 +27,7 @@ def main():
     except Exception:
         traceback.print_exc()
 
-    print("[2/3] 주가 스냅샷")
+    print("[2/4] 주가 스냅샷")
     try:
         import price
         d = price.update()
@@ -35,9 +35,29 @@ def main():
     except Exception:
         traceback.print_exc()
 
-    print("[3/3] 대시보드")
+    print("[3/4] 실적·컨센서스")
+    try:
+        import financials
+        fin, changes = financials.update()
+        print("  %s" % ("실패" if fin is None else "%d행 저장" % len(fin)))
+        if changes:
+            print("  ** 컨센서스 %d건 변경 — data/consensus_history.csv 확인" % changes)
+    except Exception:
+        traceback.print_exc()
+
+    print("[4/4] 대시보드")
     import dashboard
     print("  생성: %s" % dashboard.build())
+
+    # 수동 갱신이 밀리면 실행 로그에도 남긴다. 화면만 봐서는 놓치기 쉽다.
+    try:
+        import freshness
+        for r in freshness.check():
+            if r["stale"]:
+                print("  ** 갱신 필요: %s (최신 %s, %d일 전) — %s"
+                      % (r["name"], r["last"], r["age"], r["note"]))
+    except Exception:
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
