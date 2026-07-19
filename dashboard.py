@@ -476,7 +476,8 @@ footer {{ color:var(--muted); font-size:12px; margin-top:26px; line-height:1.7; 
 <div class="wrap">
 <header>
   <h1>S-Oil 정제마진 트래커</h1>
-  <div class="sub">기준일 {asof} · 생성 {generated}</div>
+  <div class="sub">기준일 {asof} · 생성 {generated}
+    · <a href="jenik/" style="color:var(--accent)">제닉 트래커</a></div>
 </header>
 
 {banner}

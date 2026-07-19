@@ -15,6 +15,7 @@ on:
     paths:
       - "**.py"
       - "data/*.csv"
+      - "jenik/data/*.csv"
       - ".github/workflows/daily.yml"
 
 permissions:
@@ -53,11 +54,32 @@ jobs:
           SITE_URL: https://zzzz118118-lab.github.io/investment/
         run: python run_daily.py
 
+      # 제닉 대시보드는 같은 사이트의 /jenik/ 로 붙는다.
+      # 수집이 실패해도 기존 CSV로 페이지는 만든다(S-Oil과 같은 정책).
+      # 실패해도 S-Oil 배포까지 막지 않도록 continue-on-error를 둔다.
+      - name: 제닉 대시보드
+        continue-on-error: true
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+        working-directory: jenik
+        run: python run_daily.py
+
+      - name: 제닉 페이지를 site/jenik 으로 복사
+        run: |
+          mkdir -p site/jenik
+          if [ -f jenik/site/index.html ]; then
+            cp -r jenik/site/. site/jenik/
+            echo "복사 완료: $(du -h site/jenik/index.html | cut -f1)"
+          else
+            echo "::warning::제닉 페이지 생성 실패 — 이전 배포본이 남아 있지 않으면 404가 뜬다"
+          fi
+
       - name: 데이터 커밋
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/prices.csv data/fx.csv data/baseoil.csv data/lube.csv
+          git add jenik/data/exports.csv jenik/data/price.csv
           if git diff --staged --quiet; then
             echo "변경 없음 — 커밋 생략"
           else
