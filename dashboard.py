@@ -185,7 +185,9 @@ def build():
 
         # 잠정치: 확정치가 아직 없는 달만 점선으로 잇는다.
         # 확정치가 나오면 그쪽이 이기므로 이 줄은 자동으로 사라진다.
-        prov = {}
+        # 한 달에 여러 순별 단계가 있으면 가장 진행된 것을 쓴다.
+        STAGE_RANK = {"10일": 1, "20일": 2, "월누계": 3, "월": 3}
+        prov = {}          # ts -> (값, 단계, 비고)
         pf = config.DATA / "baseoil_provisional.csv"
         if pf.exists():
             pdf = pd.read_csv(pf, comment="#")
@@ -194,8 +196,14 @@ def build():
                     ts = pd.Timestamp(str(r["month"]) + "-01")
                 except Exception:
                     continue
-                if ts not in bdf.index and pd.notna(r.get("usd_ton")):
-                    prov[ts] = float(r["usd_ton"])
+                if ts in bdf.index or pd.isna(r.get("usd_ton")):
+                    continue          # 확정치가 있으면 잠정 무시
+                stage = str(r.get("stage", "")).strip()
+                rank = STAGE_RANK.get(stage, 0)
+                if ts not in prov or rank >= prov[ts][3]:
+                    prov[ts] = (float(r["usd_ton"]), stage,
+                                str(r.get("note", ""))[:70], rank)
+        prov = {t: v[:3] for t, v in prov.items()}
 
         if prov:
             months = months + sorted(t for t in prov if t not in months)
@@ -206,7 +214,7 @@ def build():
         prov_vals = [None] * len(months)
         for i, t in enumerate(months):
             if t in prov:
-                prov_vals[i] = round(prov[t], 1)
+                prov_vals[i] = round(prov[t][0], 1)
         if prov and last_conf is not None:
             prov_vals[last_conf] = conf_vals[last_conf]
 
@@ -247,10 +255,10 @@ def build():
             ratio=num(last.iloc[-1] / basis, 2) if basis else "-",
             prov=("".join(
                 '<div class="provline">%d년 %d월 <b>잠정 %s</b> $/ton '
-                '<span class="note">— %s</span></div>'
-                % (t.year, t.month, num(v, 0),
-                   str(pdf[pdf.month == t.strftime("%Y-%m")].iloc[0].get("note", ""))[:70])
-                for t, v in sorted(prov.items())) if prov else ""))
+                '<span class="note">%s— %s</span></div>'
+                % (t.year, t.month, num(val, 0),
+                   ("(%s 누계) " % stage) if stage else "", note)
+                for t, (val, stage, note) in sorted(prov.items())) if prov else ""))
 
     # ── 차트 3: 연평균 20년 ─────────────────────────────────────
     yl = [str(d.year) for d in yr.index]
