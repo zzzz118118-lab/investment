@@ -12,6 +12,9 @@ HS 3307.90 아래 네 품목 중 3307904000이 '마스크 팩'이다.
 인증키: .env 의 DATA_GO_KR_KEY (없으면 환경변수). soil-tracker와 같은 키다.
 
 API 제약 (soil-tracker/customs.py와 동일):
+  - **https로만 호출한다.** http는 연결만 열리고 응답이 오지 않는다(2026-08-03 확인).
+    이 스크립트는 2015년부터 12년치를 도니 http로는 120초 × 12 = 24분을 통째로
+    버리고 빈손으로 끝난다. 실제로 2026-08-03 CI 실행이 1453초를 썼다.
   - hsSgn은 6자리까지만 먹는다. 10자리를 넣으면 빈 결과가 온다.
   - 조회 구간이 길면 빈 결과가 온다. 연 단위로 끊어 요청한다.
   - 실패해도 예외가 아니라 빈 XML이 오므로 행 수를 반드시 확인할 것.
@@ -29,7 +32,7 @@ import store
 
 warnings.filterwarnings("ignore")
 
-URL = "http://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
+URL = "https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
 
 
 def _key():

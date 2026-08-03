@@ -24,7 +24,7 @@ for s in (sys.stdout, sys.stderr):
 
 ENV = Path(__file__).resolve().parent / ".env"
 NAME = "DATA_GO_KR_KEY"
-TEST_URL = "http://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
+TEST_URL = "https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
 
 
 def load_env():

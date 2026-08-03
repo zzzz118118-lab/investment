@@ -13,6 +13,10 @@ HS 2710195020 = '윤활유 기유(基油)'. 페트로넷의 '윤활유'(더 넓�
   CI    환경변수 DATA_GO_KR_KEY (GitHub 시크릿)
 
 API 제약:
+  - **https로만 호출한다.** http는 연결만 열리고 응답이 오지 않는다.
+    2026-08-03에 로컬(25초/50초 두 번 다 ReadTimeout)과 CI 양쪽에서 확인했다.
+    같은 날 CI 실행에서 연도별 요청이 전부 120초 타임아웃을 채웠다
+    (2년치 = 240초). https는 같은 키·같은 파라미터로 0.2초에 응답한다.
   - hsSgn 은 6자리까지만 먹는다. 10자리를 넣으면 빈 결과가 온다.
     271019로 조회한 뒤 hsCode == 2710195020 인 행만 골라낸다.
   - 조회 구간이 길면 빈 결과가 온다. 연 단위로 끊어 요청한다.
@@ -30,7 +34,7 @@ import store
 
 warnings.filterwarnings("ignore")
 
-URL = "http://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
+URL = "https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
 HS6 = "271019"
 HS10 = "2710195020"          # 윤활유 기유(基油)
 CSV = config.DATA / "baseoil.csv"
